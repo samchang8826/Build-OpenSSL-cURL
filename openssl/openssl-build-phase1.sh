@@ -125,7 +125,7 @@ buildCatalyst()
 		sed -ie "s!^CFLAG=!CFLAG=-isysroot ${CROSS_TOP}/SDKs/${CROSS_SDK} !" "Makefile"
 	fi
 
-	make -j4 >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
+	make -j8 >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
 	make install_sw >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
 	make clean >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
 	popd > /dev/null
@@ -173,11 +173,11 @@ if [ "$engine" == "1" ]; then
 	sed -ie 's/\"engine/\"dynamic-engine/' ${OPENSSL_VERSION}/Configurations/15-ios.conf
 fi
 
-# Patch configuration to add macOS arm64 config - for openssl 1.1.1h
-patch "${OPENSSL_VERSION}/Configurations/10-main.conf" 10-main.conf.patch >> "/tmp/${OPENSSL_VERSION}-${ARCH}.log" 2>&1
-
 ## Catalyst
 if [ $catalyst == "1" ]; then
+	# Patch configuration to add macOS arm64 config - for openssl 1.1.1h
+	patch "${OPENSSL_VERSION}/Configurations/10-main.conf" 10-main.conf.patch >> "/tmp/${OPENSSL_VERSION}-${ARCH}.log" 2>&1
+
 	echo -e "${bold}Building Catalyst libraries${dim}"
 	buildCatalyst "x86_64"
 	buildCatalyst "arm64"
