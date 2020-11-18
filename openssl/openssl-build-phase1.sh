@@ -95,40 +95,6 @@ shift $((OPTIND-1))
 
 DEVELOPER=`xcode-select -print-path`
 
-buildMac()
-{
-	ARCH=$1
-
-	echo -e "${subbold}Building ${OPENSSL_VERSION} for MacOS ${archbold}${ARCH}${dim}"
-
-	pushd . > /dev/null
-	cd "${OPENSSL_VERSION}"
-
-	TARGET="darwin-i386-cc"
-
-	if [[ $ARCH == "x86_64" ]]; then
-		TARGET="darwin64-x86_64-cc"
-	fi
-
-	if [[ $ARCH == "arm64" ]]; then
-		TARGET="darwin64-arm64-cc"
-	fi
-
-	export CC="${BUILD_TOOLS}/usr/bin/gcc"
-
-	if [[ "$OPENSSL_VERSION" = "openssl-1.1.1"* ]]; then
-		./Configure no-asm ${TARGET} -no-shared  --prefix="/tmp/${OPENSSL_VERSION}-${ARCH}" --openssldir="/tmp/${OPENSSL_VERSION}-${ARCH}" $CUSTOMCONFIG &> "/tmp/${OPENSSL_VERSION}-${ARCH}.log"
-	else
-		./Configure no-asm ${TARGET} -no-shared  --openssldir="/tmp/${OPENSSL_VERSION}-${ARCH}" $CUSTOMCONFIG &> "/tmp/${OPENSSL_VERSION}-${ARCH}.log"
-	fi
-	make >> "/tmp/${OPENSSL_VERSION}-${ARCH}.log" 2>&1
-	make install_sw >> "/tmp/${OPENSSL_VERSION}-${ARCH}.log" 2>&1
-	# Keep openssl binary for Mac version
-	cp "/tmp/${OPENSSL_VERSION}-${ARCH}/bin/openssl" "/tmp/openssl"
-	make clean >> "/tmp/${OPENSSL_VERSION}-${ARCH}.log" 2>&1
-	popd > /dev/null
-}
-
 buildCatalyst()
 {
 	ARCH=$1
@@ -159,72 +125,9 @@ buildCatalyst()
 		sed -ie "s!^CFLAG=!CFLAG=-isysroot ${CROSS_TOP}/SDKs/${CROSS_SDK} !" "Makefile"
 	fi
 
-	make >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
+	make -j4 >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
 	make install_sw >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
 	make clean >> "/tmp/${OPENSSL_VERSION}-catalyst-${ARCH}.log" 2>&1
-	popd > /dev/null
-}
-
-buildTVOS()
-{
-	ARCH=$1
-
-	pushd . > /dev/null
-	cd "${OPENSSL_VERSION}"
-
-	if [[ "${ARCH}" == "x86_64" ]]; then
-		PLATFORM="AppleTVSimulator"
-	else
-		PLATFORM="AppleTVOS"
-		sed -ie "s!static volatile sig_atomic_t intr_signal;!static volatile intr_signal;!" "crypto/ui/ui_openssl.c"
-	fi
-
-	export $PLATFORM
-	export CROSS_TOP="${DEVELOPER}/Platforms/${PLATFORM}.platform/Developer"
-	export CROSS_SDK="${PLATFORM}${TVOS_SDK_VERSION}.sdk"
-	export BUILD_TOOLS="${DEVELOPER}"
-	export CC="${BUILD_TOOLS}/usr/bin/gcc -fembed-bitcode -arch ${ARCH}"
-	export LC_CTYPE=C
-
-	echo -e "${subbold}Building ${OPENSSL_VERSION} for ${PLATFORM} ${TVOS_SDK_VERSION} ${archbold}${ARCH}${dim}"
-
-	# Patch apps/speed.c to not use fork() since it's not available on tvOS
-	LANG=C sed -i -- 's/define HAVE_FORK 1/define HAVE_FORK 0/' "./apps/speed.c"
-	if [[ "$OPENSSL_VERSION" = "openssl-1.1.1"* ]]; then
-		LANG=C sed -i -- 's/!defined(OPENSSL_NO_POSIX_IO)/defined(HAVE_FORK)/' "./apps/ocsp.c"
-		LANG=C sed -i -- 's/fork()/-1/' "./apps/ocsp.c"
-		LANG=C sed -i -- 's/fork()/-1/' "./test/drbgtest.c"
-		LANG=C sed -i -- 's/!defined(OPENSSL_NO_ASYNC)/defined(HAVE_FORK)/' "./crypto/async/arch/async_posix.h"
-	fi
-
-	# Patch Configure to build for tvOS, not iOS
-	LANG=C sed -i -- 's/D\_REENTRANT\:iOS/D\_REENTRANT\:tvOS/' "./Configure"
-	chmod u+x ./Configure
-
-	if [[ "${ARCH}" == "x86_64" ]]; then
-		if [[ "$OPENSSL_VERSION" = "openssl-1.1.1"* ]]; then
-			./Configure no-asm darwin64-x86_64-cc -no-shared --prefix="/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}" --openssldir="/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}" $CUSTOMCONFIG &> "/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}.log"
-		else
-			./Configure no-asm darwin64-x86_64-cc --openssldir="/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}" $CUSTOMCONFIG &> "/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}.log"
-		fi
-	else
-		export CC="${BUILD_TOOLS}/usr/bin/gcc -fembed-bitcode -arch ${ARCH}"
-		if [[ "$OPENSSL_VERSION" = "openssl-1.1.1"* ]]; then
-			./Configure iphoneos-cross DSO_LDFLAGS=-fembed-bitcode --prefix="/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}" -no-shared --openssldir="/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}" $CUSTOMCONFIG &> "/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}.log"
-		else
-			./Configure iphoneos-cross --openssldir="/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}" $CUSTOMCONFIG &> "/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}.log"
-		fi
-	fi
-	# add -isysroot to CC=
-	if [[ "$OPENSSL_VERSION" = "openssl-1.1.1"* ]]; then
-		sed -ie "s!^CFLAGS=!CFLAGS=-isysroot ${CROSS_TOP}/SDKs/${CROSS_SDK} -mtvos-version-min=${TVOS_MIN_SDK_VERSION} !" "Makefile"
-	else
-		sed -ie "s!^CFLAG=!CFLAG=-isysroot ${CROSS_TOP}/SDKs/${CROSS_SDK} -mtvos-version-min=${TVOS_MIN_SDK_VERSION} !" "Makefile"
-	fi
-
-	make >> "/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}.log" 2>&1
-	make install_sw >> "/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}.log" 2>&1
-	make clean >> "/tmp/${OPENSSL_VERSION}-tvOS-${ARCH}.log" 2>&1
 	popd > /dev/null
 }
 
@@ -232,18 +135,12 @@ buildTVOS()
 echo -e "${bold}Setting Up Environment${dim}"
 # rm -rf include/openssl/* lib/*
 
-mkdir -p Mac/lib
 mkdir -p Catalyst/lib
 mkdir -p iOS/lib
 mkdir -p iOS-simulator/lib
-mkdir -p iOS-fat/lib
-mkdir -p tvOS/lib
-mkdir -p Mac/include/openssl/
 mkdir -p Catalyst/include/openssl/
 mkdir -p iOS/include/openssl/
 mkdir -p iOS-simulator/include/openssl/
-mkdir -p iOS-fat/include/openssl/
-mkdir -p tvOS/include/openssl/
 
 rm -rf /tmp/${OPENSSL_VERSION}-*
 rm -rf /tmp/${OPENSSL_VERSION}-*.log
@@ -279,25 +176,6 @@ fi
 # Patch configuration to add macOS arm64 config - for openssl 1.1.1h
 patch "${OPENSSL_VERSION}/Configurations/10-main.conf" 10-main.conf.patch >> "/tmp/${OPENSSL_VERSION}-${ARCH}.log" 2>&1
 
-## Mac
-echo -e "${bold}Building Mac libraries${dim}"
-buildMac "x86_64"
-MACHINE_TYPE=`uname -m`
-if [ ${MACHINE_TYPE} == 'arm64' ]; then
-	buildMac "arm64"
-fi
-
-echo "  Copying headers and libraries"
-cp /tmp/${OPENSSL_VERSION}-x86_64/include/openssl/* Mac/include/openssl/
-
-lipo \
-	/tmp/${OPENSSL_VERSION}-*64/lib/libcrypto.a \
-	-create -output Mac/lib/libcrypto.a
-
-lipo \
-	/tmp/${OPENSSL_VERSION}-*64/lib/libssl.a \
-	-create -output Mac/lib/libssl.a
-
 ## Catalyst
 if [ $catalyst == "1" ]; then
 	echo -e "${bold}Building Catalyst libraries${dim}"
@@ -317,23 +195,6 @@ if [ $catalyst == "1" ]; then
 		"/tmp/${OPENSSL_VERSION}-catalyst-arm64/lib/libssl.a" \
 		-create -output Catalyst/lib/libssl.a
 fi
-
-## tvOS
-echo -e "${bold}Building tvOS libraries${dim}"
-buildTVOS "arm64"
-buildTVOS "x86_64"
-echo "  Copying headers and libraries"
-cp /tmp/${OPENSSL_VERSION}-tvOS-arm64/include/openssl/* tvOS/include/openssl/
-
-lipo \
-	"/tmp/${OPENSSL_VERSION}-tvOS-arm64/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-tvOS-x86_64/lib/libcrypto.a" \
-	-create -output tvOS/lib/libcrypto.a
-
-lipo \
-	"/tmp/${OPENSSL_VERSION}-tvOS-arm64/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-tvOS-x86_64/lib/libssl.a" \
-	-create -output tvOS/lib/libssl.a
 
 if [ $catalyst == "1" ]; then
 libtool -no_warning_for_no_symbols -static -o openssl-ios-x86_64-maccatalyst.a Catalyst/lib/libcrypto.a Catalyst/lib/libssl.a

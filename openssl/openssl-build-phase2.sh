@@ -150,7 +150,7 @@ buildIOS()
 		sed -ie "s!^CFLAG=!CFLAG=-isysroot ${CROSS_TOP}/SDKs/${CROSS_SDK} -miphoneos-version-min=${IOS_MIN_SDK_VERSION} !" "Makefile"
 	fi
 
-	make >> "/tmp/${OPENSSL_VERSION}-iOS-${ARCH}.log" 2>&1
+	make -j4 >> "/tmp/${OPENSSL_VERSION}-iOS-${ARCH}.log" 2>&1
 	make install_sw >> "/tmp/${OPENSSL_VERSION}-iOS-${ARCH}.log" 2>&1
 	make clean >> "/tmp/${OPENSSL_VERSION}-iOS-${ARCH}.log" 2>&1
 	popd > /dev/null
@@ -211,18 +211,12 @@ buildIOSsim()
 #echo -e "${bold}Cleaning up${dim}"
 #rm -rf include/openssl/* lib/*
 
-mkdir -p Mac/lib
 mkdir -p Catalyst/lib
 mkdir -p iOS/lib
 mkdir -p iOS-simulator/lib
-mkdir -p iOS-fat/lib
-mkdir -p tvOS/lib
-mkdir -p Mac/include/openssl/
 mkdir -p Catalyst/include/openssl/
 mkdir -p iOS/include/openssl/
 mkdir -p iOS-simulator/include/openssl/
-mkdir -p iOS-fat/include/openssl/
-mkdir -p tvOS/include/openssl/
 
 rm -rf "/tmp/${OPENSSL_VERSION}-*"
 rm -rf "/tmp/${OPENSSL_VERSION}-*.log"
@@ -260,13 +254,11 @@ patch "${OPENSSL_VERSION}/Configurations/10-main.conf" 10-main.conf.patch >> "/t
 
 echo -e "${bold}Building iOS libraries${dim}"
 buildIOS "armv7"
-buildIOS "armv7s"
 buildIOS "arm64"
-buildIOS "arm64e"
 
 buildIOSsim "i386"
 buildIOSsim "x86_64"
-buildIOSsim "arm64"
+# buildIOSsim "arm64"
 
 echo "  Copying headers and libraries"
 
@@ -275,16 +267,12 @@ cp /tmp/${OPENSSL_VERSION}-iOS-arm64/include/openssl/* iOS/include/openssl/
 
 lipo \
 	"/tmp/${OPENSSL_VERSION}-iOS-armv7/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-armv7s/lib/libcrypto.a" \
 	"/tmp/${OPENSSL_VERSION}-iOS-arm64/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-arm64e/lib/libcrypto.a" \
 	-create -output iOS/lib/libcrypto.a
 
 lipo \
 	"/tmp/${OPENSSL_VERSION}-iOS-armv7/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-armv7s/lib/libssl.a" \
 	"/tmp/${OPENSSL_VERSION}-iOS-arm64/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-arm64e/lib/libssl.a" \
 	-create -output iOS/lib/libssl.a
 
 # Build iOS Simulator Libraries
@@ -293,38 +281,15 @@ cp /tmp/${OPENSSL_VERSION}-iOS-simulator-x86_64/include/openssl/* iOS-simulator/
 lipo \
 	"/tmp/${OPENSSL_VERSION}-iOS-simulator-i386/lib/libcrypto.a" \
 	"/tmp/${OPENSSL_VERSION}-iOS-simulator-x86_64/lib/libcrypto.a" \
-    "/tmp/${OPENSSL_VERSION}-iOS-simulator-arm64/lib/libcrypto.a" \
 	-create -output iOS-simulator/lib/libcrypto.a
 
 lipo \
 	"/tmp/${OPENSSL_VERSION}-iOS-simulator-x86_64/lib/libssl.a" \
 	"/tmp/${OPENSSL_VERSION}-iOS-simulator-i386/lib/libssl.a" \
-    "/tmp/${OPENSSL_VERSION}-iOS-simulator-arm64/lib/libssl.a" \
 	-create -output iOS-simulator/lib/libssl.a
 
-# Build iOS + iOS Simulator Universal Library
-cp /tmp/${OPENSSL_VERSION}-iOS-arm64/include/openssl/* iOS-fat/include/openssl/
-
-lipo \
-	"/tmp/${OPENSSL_VERSION}-iOS-armv7/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-armv7s/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-arm64/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-arm64e/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-simulator-i386/lib/libcrypto.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-simulator-x86_64/lib/libcrypto.a" \
-	-create -output iOS-fat/lib/libcrypto.a
-
-lipo \
-	"/tmp/${OPENSSL_VERSION}-iOS-armv7/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-armv7s/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-arm64/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-arm64e/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-simulator-x86_64/lib/libssl.a" \
-	"/tmp/${OPENSSL_VERSION}-iOS-simulator-i386/lib/libssl.a" \
-	-create -output iOS-fat/lib/libssl.a
-
 echo "  Creating combined OpenSSL libraries for iOS"
-libtool -no_warning_for_no_symbols -static -o openssl-ios-armv7_armv7s_arm64_arm64e.a iOS/lib/libcrypto.a iOS/lib/libssl.a
+libtool -no_warning_for_no_symbols -static -o openssl-ios-armv7_arm64.a iOS/lib/libcrypto.a iOS/lib/libssl.a
 libtool -no_warning_for_no_symbols -static -o openssl-ios-x86_64-simulator.a iOS-simulator/lib/libcrypto.a iOS-simulator/lib/libssl.a
 
 echo -e "${bold}Cleaning up${dim}"
